@@ -1,4 +1,5 @@
-#version 3.1
+# version 3.2 - iM Bank UI Edition
+
 
 import streamlit as st
 import os
@@ -11,25 +12,224 @@ import google.generativeai as genai
 import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
+from datetime import datetime
 from duckduckgo_search import DDGS
+
 
 # ==========================================
 # 1. 설정 및 API 키
 # ==========================================
 try:
-    # 스트림릿 클라우드의 비밀 금고에서 키를 꺼내옴
-    API_KEY = st.secrets["GEMINI_API_KEY"] 
+    API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    # (내 컴퓨터에서 테스트할 때를 위한 예비용 - 깃허브 올릴 땐 지우는 게 좋음)
-    API_KEY = "내_실제_키_입력" 
+    API_KEY = "내_실제_키_입력"
 
 genai.configure(api_key=API_KEY)
 
 st.set_page_config(
-    page_title="AI 주식 애널리스트 Pro",
+    page_title="iM AI 주식 애널리스트",
+    page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+# ==========================================
+# iM뱅크 디자인 토큰
+# ==========================================
+IM_MINT   = "#00B496"
+IM_DARK   = "#012E2A"
+IM_BG     = "#F4F8F7"
+IM_WHITE  = "#FFFFFF"
+IM_BORDER = "#D0E8E4"
+IM_TEXT   = "#1A1A1A"
+IM_MUTED  = "#5A7068"
+IM_UP     = "#0B8C5E"
+IM_DOWN   = "#E05C5C"
+
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+html, body, [class*="css"] {{
+    font-family: 'Noto Sans KR', sans-serif;
+    background-color: {IM_BG};
+    color: {IM_TEXT};
+}}
+
+/* ── 사이드바 ── */
+[data-testid="stSidebar"] {{
+    background-color: {IM_DARK} !important;
+}}
+[data-testid="stSidebar"] * {{
+    color: #E8F5F2 !important;
+}}
+[data-testid="stSidebar"] .stRadio label {{
+    color: #B0D4CC !important;
+    font-size: 0.9rem;
+}}
+[data-testid="stSidebar"] hr {{
+    border-color: #1E4A44 !important;
+}}
+[data-testid="stSidebar"] .stTextInput input {{
+    background-color: #1E4A44 !important;
+    border: 1px solid #2D6B63 !important;
+    color: #E8F5F2 !important;
+    border-radius: 6px;
+}}
+[data-testid="stSidebar"] .stTextInput input::placeholder {{
+    color: #7AADA5 !important;
+}}
+
+/* ── 버튼 ── */
+.stButton > button {{
+    background-color: {IM_MINT} !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.2rem !important;
+    transition: background-color 0.2s ease;
+}}
+.stButton > button:hover {{
+    background-color: #009980 !important;
+}}
+
+/* ── 탭 ── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{
+    border-bottom: 2px solid {IM_BORDER};
+    gap: 0;
+}}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    background-color: transparent !important;
+    border: none !important;
+    color: {IM_MUTED} !important;
+    font-weight: 500;
+    padding: 0.6rem 1.4rem;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{
+    color: {IM_MINT} !important;
+    border-bottom: 3px solid {IM_MINT} !important;
+    font-weight: 700 !important;
+}}
+
+/* ── 메트릭 카드 ── */
+[data-testid="stMetric"] {{
+    background-color: {IM_WHITE};
+    border: 1px solid {IM_BORDER};
+    border-radius: 10px;
+    padding: 1rem 1.2rem !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}}
+[data-testid="stMetricLabel"] {{
+    color: {IM_MUTED} !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}}
+[data-testid="stMetricValue"] {{
+    color: {IM_TEXT} !important;
+    font-size: 1.4rem !important;
+    font-weight: 700 !important;
+}}
+
+/* ── 익스팬더 ── */
+[data-testid="stExpander"] {{
+    border: 1px solid {IM_BORDER} !important;
+    border-radius: 8px !important;
+    background-color: {IM_WHITE} !important;
+}}
+
+/* ── 메인 배경 ── */
+[data-testid="stAppViewContainer"] > .main {{
+    background-color: {IM_BG};
+}}
+
+/* ── 공통 컴포넌트 클래스 ── */
+.im-page-header {{
+    margin-bottom: 1.2rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid {IM_BORDER};
+}}
+.im-page-title {{
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: {IM_DARK};
+    margin: 0 0 0.2rem 0;
+    border-left: 4px solid {IM_MINT};
+    padding-left: 0.75rem;
+}}
+.im-page-subtitle {{
+    font-size: 0.85rem;
+    color: {IM_MUTED};
+    margin: 0;
+    padding-left: 1.05rem;
+}}
+.im-section-title {{
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: {IM_DARK};
+    margin: 1.2rem 0 0.6rem 0;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid {IM_BORDER};
+}}
+.im-data-source {{
+    font-size: 0.75rem;
+    color: {IM_MUTED};
+    background-color: {IM_WHITE};
+    border: 1px solid {IM_BORDER};
+    border-radius: 4px;
+    padding: 0.3rem 0.7rem;
+    display: inline-block;
+    margin-bottom: 0.6rem;
+}}
+.im-disclaimer {{
+    font-size: 0.78rem;
+    color: #7A5C00;
+    background-color: #FFFBEB;
+    border-left: 3px solid #F0A500;
+    padding: 0.6rem 1rem;
+    border-radius: 0 6px 6px 0;
+    margin-top: 1.2rem;
+}}
+.im-ticker-badge {{
+    display: inline-block;
+    background-color: {IM_BG};
+    color: {IM_MINT};
+    border: 1px solid {IM_BORDER};
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    margin-bottom: 0.5rem;
+    font-family: monospace;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==========================================
+# 공통 헬퍼 함수
+# ==========================================
+def get_data_source_badge(source: str = "Yahoo Finance"):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M KST")
+    return f'<span class="im-data-source">📡 {source} · 기준: {now}</span>'
+
+def im_page_header(title: str, subtitle: str = ""):
+    sub_html = f'<div class="im-page-subtitle">{subtitle}</div>' if subtitle else ""
+    st.markdown(f"""
+    <div class="im-page-header">
+        <div class="im-page-title">{title}</div>
+        {sub_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+def im_section(title: str):
+    st.markdown(f'<div class="im-section-title">{title}</div>', unsafe_allow_html=True)
+
 
 # ==========================================
 # 2. 세션 상태 초기화
@@ -42,10 +242,10 @@ defaults = {
     'news_result_text': None,
     'news_links': None,
     'last_query': None,
-    'page': '📊 주식 분석',
+    'page': '주식 분석',
     'rec_beginner': None,
     'rec_expert': None,
-    'fx_period': '3mo',   # 환율 페이지 기간 선택 캐시
+    'fx_period': '3mo',
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -70,7 +270,7 @@ def detect_market(query: str):
 def initialize_database():
     db_file = "stocks.db"
     if not os.path.exists(db_file):
-        with st.spinner("📦 주식 DB를 구축 중입니다... (최초 1회 실행)"):
+        with st.spinner("주식 DB를 구축 중입니다... (최초 1회 실행)"):
             try:
                 df_krx = fdr.StockListing('KRX')
                 conn = sqlite3.connect(db_file)
@@ -82,10 +282,9 @@ def initialize_database():
                                    (row['Code'], row['Name'], row['Market']))
                 conn.commit()
                 conn.close()
-                st.success(f"✅ DB 생성 완료! ({len(df_krx)}개 종목)")
+                st.success(f"DB 생성 완료 ({len(df_krx)}개 종목)")
             except Exception as e:
                 st.error(f"DB 생성 실패: {e}")
-
 
 def get_ticker_from_db(stock_name: str):
     initialize_database()
@@ -126,7 +325,6 @@ def get_us_ticker_by_name(company_name: str):
     except Exception:
         return None, None
 
-
 def validate_us_ticker(ticker: str):
     try:
         stock = yf.Ticker(ticker)
@@ -148,33 +346,21 @@ def get_stock_data(ticker: str, period: str = "6mo"):
 
 
 # ==========================================
-# 7. 환율 차트 (공용)  ★ 신규: JPY 지원
+# 7. 환율 차트
 # ==========================================
-def get_fx_chart(symbol: str, label: str, color: str, period: str = "3mo", height: int = 180):
-    """
-    symbol  : 'USDKRW=X' 또는 'JPYKRW=X'
-    label   : 호버·범례 이름
-    color   : 라인 색상 hex
-    period  : yfinance period 문자열 ('1mo','3mo','6mo','1y')
-    height  : 차트 높이 px
-    반환    : (fig, (현재환율, 전일대비변화, 변화율%))
-    """
+def get_fx_chart(symbol: str, label: str, color: str, period: str = "3mo", height: int = 200):
     try:
         df = yf.Ticker(symbol).history(period=period)
         if df.empty:
             return None, None
-
         current = df['Close'].iloc[-1]
         prev    = df['Close'].iloc[-2]
         change  = current - prev
         chg_pct = (change / prev) * 100
-
         r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Close'],
+            x=df.index, y=df['Close'],
             mode='lines',
             line=dict(color=color, width=2),
             fill='tozeroy',
@@ -185,11 +371,12 @@ def get_fx_chart(symbol: str, label: str, color: str, period: str = "3mo", heigh
         fig.update_layout(
             margin=dict(l=0, r=0, t=10, b=0),
             height=height,
-            xaxis=dict(showgrid=False, tickformat='%m/%d'),
-            yaxis=dict(showgrid=True, gridcolor='rgba(200,200,200,0.15)'),
+            xaxis=dict(showgrid=False, tickformat='%m/%d', tickfont=dict(size=11)),
+            yaxis=dict(showgrid=True, gridcolor=f'rgba(0,180,150,0.08)', tickfont=dict(size=11)),
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             showlegend=False,
+            hoverlabel=dict(bgcolor=IM_DARK, font_color='white', font_size=12)
         )
         return fig, (current, change, chg_pct)
     except Exception:
@@ -199,26 +386,22 @@ def get_fx_chart(symbol: str, label: str, color: str, period: str = "3mo", heigh
 # ==========================================
 # 8. 추천 카드용 미니 차트
 # ==========================================
-def get_mini_chart(ticker: str, color: str = '#4c8ef7'):
-    """
-    1개월 종가 라인 차트 (카드 내 삽입용, 초소형)
-    """
+def get_mini_chart(ticker: str, color: str = IM_MINT):
     try:
         df = yf.Ticker(ticker).history(period="1mo")
         if df.empty:
-            return None
-        # 수익률 색상: 상승=초록, 하락=빨강
+            return None, None
         start = df['Close'].iloc[0]
         end   = df['Close'].iloc[-1]
-        line_color = '#26a65b' if end >= start else '#e74c3c'
-
+        line_color = IM_UP if end >= start else IM_DOWN
+        r, g, b = int(line_color[1:3], 16), int(line_color[3:5], 16), int(line_color[5:7], 16)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df.index, y=df['Close'],
             mode='lines',
             line=dict(color=line_color, width=1.5),
             fill='tozeroy',
-            fillcolor=f'rgba({int(line_color[1:3],16)},{int(line_color[3:5],16)},{int(line_color[5:7],16)},0.1)',
+            fillcolor=f'rgba({r},{g},{b},0.08)',
             hovertemplate='%{y:,.2f}<extra></extra>'
         ))
         fig.update_layout(
@@ -243,7 +426,6 @@ def analyze_with_gemini(content_type: str, content_data, market_type: str = 'KR'
     try:
         model = genai.GenerativeModel("models/gemini-2.5-flash")
 
-        # ── 오디오 (유튜브) ──────────────────────────────
         if content_type == "audio":
             uploaded_file = genai.upload_file(content_data)
             retry = 0
@@ -252,21 +434,20 @@ def analyze_with_gemini(content_type: str, content_data, market_type: str = 'KR'
                 uploaded_file = genai.get_file(uploaded_file.name)
                 retry += 1
                 if retry > 60:
-                    return "❌ 파일 처리 시간 초과 (1분 경과)"
+                    return "파일 처리 시간 초과 (1분 경과)"
             if uploaded_file.state.name == "FAILED":
-                return "❌ 구글 AI 처리 실패"
+                return "구글 AI 처리 실패"
             prompt = """
             이 주식 관련 영상의 핵심 내용을 투자자 입장에서 한국어로 요약해줘.
             양식:
-            ## 1. 📺 영상 핵심 3줄 요약
-            ## 2. 📈 매매 의견 (매수/매도/관망) 및 목표가
-            ## 3. 💡 주요 근거 및 포인트
+            ## 1. 영상 핵심 3줄 요약
+            ## 2. 매매 의견 (매수/매도/관망) 및 목표가
+            ## 3. 주요 근거 및 포인트
             """
             response = model.generate_content([uploaded_file, prompt])
             genai.delete_file(uploaded_file.name)
             return response.text
 
-        # ── 뉴스 텍스트 분석 ─────────────────────────────
         elif content_type == "text":
             if market_type == 'US':
                 prompt = f"""
@@ -274,24 +455,23 @@ def analyze_with_gemini(content_type: str, content_data, market_type: str = 'KR'
                 이를 한국어로 번역·종합하여 투자 리포트를 작성해줘.
                 [뉴스 데이터]\n{content_data}
                 양식:
-                ## 1. 📰 최신 뉴스 종합 3줄 요약 (한국어)
-                ## 2. 📈 시장의 종합적 의견 (매수/매도/관망)
-                ## 3. ⚠️ 주요 리스크 및 호재 요인
+                ## 1. 최신 뉴스 종합 3줄 요약 (한국어)
+                ## 2. 시장의 종합적 의견 (매수/매도/관망)
+                ## 3. 주요 리스크 및 호재 요인
                 """
             else:
                 prompt = f"""
                 다음 뉴스 기사들을 종합하여 투자 리포트를 작성해줘.
                 [뉴스 데이터]\n{content_data}
                 양식:
-                ## 1. 📰 최신 뉴스 종합 3줄 요약
-                ## 2. 📈 시장의 종합적 의견 (매수/매도/관망)
-                ## 3. ⚠️ 주요 리스크 및 호재 요인
+                ## 1. 최신 뉴스 종합 3줄 요약
+                ## 2. 시장의 종합적 의견 (매수/매도/관망)
+                ## 3. 주요 리스크 및 호재 요인
                 """
             return model.generate_content(prompt).text
 
-        # ── 추천 종목 생성 ───────────────────────────────
         elif content_type == "recommend":
-            level = content_data  # 'beginner' or 'expert'
+            level = content_data
             if level == 'beginner':
                 prompt = """
                 주식 투자 초보자에게 적합한 국내·미국 주식 각 3종목씩 총 6종목을 추천해줘.
@@ -329,7 +509,7 @@ def analyze_with_gemini(content_type: str, content_data, market_type: str = 'KR'
             return model.generate_content(prompt).text
 
     except Exception as e:
-        return f"❌ AI 분석 중 에러 발생: {e}"
+        return f"AI 분석 중 오류 발생: {e}"
 
 
 # ==========================================
@@ -340,14 +520,14 @@ def get_news_analysis(keyword: str, market_type: str = 'KR'):
         q = f"{keyword} stock forecast analysis" if market_type == 'US' else f"{keyword} 주가 전망"
         results = DDGS().text(q, max_results=5)
         if not results:
-            return "❌ 검색된 뉴스가 없습니다.", None
+            return "검색된 뉴스가 없습니다.", None
         news_text = "".join(
             f"[{i+1}] {r['title']}\n{r['body']}\nLink: {r['href']}\n\n"
             for i, r in enumerate(results)
         )
         return analyze_with_gemini("text", news_text, market_type), results
     except Exception as e:
-        return f"❌ 뉴스 검색 오류: {e}", None
+        return f"뉴스 검색 오류: {e}", None
 
 
 # ==========================================
@@ -375,133 +555,167 @@ def download_audio(youtube_url: str):
 
 
 # ==========================================
-# 12. 추천 카드 렌더링 헬퍼  ★ 신규: 미니 차트 포함
+# 12. 추천 카드 렌더링
 # ==========================================
 def parse_ticker_from_block(block: str) -> str:
-    """블록 제목에서 (티커) 패턴 추출"""
     m = re.search(r'\(([A-Z0-9\.\-]{1,10})\)', block)
     return m.group(1) if m else None
 
-
 def render_stock_cards(stock_list: list):
-    """
-    stock_list: [{"flag","name","ticker","desc","reason","risk","stars"}, ...]
-    각 아이템을 카드(border) + 미니 차트로 렌더링
-    """
     kr_list = [s for s in stock_list if '🇰🇷' in s['flag']]
     us_list = [s for s in stock_list if '🇺🇸' in s['flag']]
 
-    for region_label, items in [("🇰🇷 국내", kr_list), ("🇺🇸 미국", us_list)]:
-        st.markdown(f"**{region_label}**")
+    for region_label, items in [("국내 종목", kr_list), ("미국 종목", us_list)]:
+        st.markdown(f'<div class="im-section-title">{region_label}</div>', unsafe_allow_html=True)
         cols = st.columns(3)
         for i, s in enumerate(items[:3]):
             with cols[i]:
                 with st.container(border=True):
-                    # 상단: 종목 이름 + 티커
-                    st.markdown(f"#### {s['flag']} {s['name']}")
-                    st.caption(f"`{s['ticker']}`")
-
-                    # 미니 차트 + 1개월 수익률
+                    st.markdown(f"**{s['flag']} {s['name']}**")
+                    st.markdown(
+                        f'<span class="im-ticker-badge">{s["ticker"]}</span>',
+                        unsafe_allow_html=True
+                    )
                     fig_mini, ret = get_mini_chart(s['ticker'])
                     if fig_mini:
-                        st.plotly_chart(fig_mini, use_container_width=True, config={'displayModeBar': False})
-                        ret_color = "🟢" if ret and ret >= 0 else "🔴"
-                        st.caption(f"{ret_color} 1개월 수익률: **{ret:+.1f}%**" if ret is not None else "")
+                        st.plotly_chart(fig_mini, use_container_width=True,
+                                        config={'displayModeBar': False})
+                        color = IM_UP if ret and ret >= 0 else IM_DOWN
+                        sign  = "▲" if ret and ret >= 0 else "▼"
+                        st.markdown(
+                            f'<span style="color:{color};font-size:0.82rem;font-weight:600">'
+                            f'{sign} 1개월 {ret:+.1f}%</span>',
+                            unsafe_allow_html=True
+                        )
                     else:
-                        st.caption("📊 차트 데이터 없음")
+                        st.caption("차트 데이터 없음")
 
                     st.markdown("---")
-                    # 설명 텍스트
-                    st.markdown(f"💬 {s['desc']}")
+                    st.caption(s['desc'])
                     if s.get('reason'):
-                        st.markdown(f"✅ {s['reason']}")
-                    st.markdown(f"⚠️ 리스크: {s['risk']}")
-                    st.markdown(f"📊 난이도: {s['stars']}")
+                        st.markdown(
+                            f'<span style="font-size:0.83rem;color:{IM_MUTED}">'
+                            f'추천 이유: {s["reason"]}</span>',
+                            unsafe_allow_html=True
+                        )
+                    st.markdown(
+                        f'<span style="font-size:0.82rem;color:{IM_DOWN}">'
+                        f'리스크: {s["risk"]}</span>',
+                        unsafe_allow_html=True
+                    )
+                    st.markdown(
+                        f'<span style="font-size:0.82rem">난이도: {s["stars"]}</span>',
+                        unsafe_allow_html=True
+                    )
         st.markdown("")
 
-
 def render_ai_recommendation_cards(ai_text: str):
-    """AI가 생성한 마크다운을 파싱 → 카드 + 미니 차트 렌더링"""
     blocks = [b.strip() for b in ai_text.split('---') if b.strip()]
-
     parsed = []
     for block in blocks:
         lines = [l.strip() for l in block.split('\n') if l.strip()]
-        item = {'flag': '🇺🇸', 'name': '', 'ticker': '', 'desc': '', 'reason': '', 'risk': '', 'stars': '⭐'}
+        item = {'flag': '🇺🇸', 'name': '', 'ticker': '',
+                'desc': '', 'reason': '', 'risk': '', 'stars': '⭐'}
         for line in lines:
             if line.startswith('### '):
                 title = line[4:]
-                if '🇰🇷' in title:
-                    item['flag'] = '🇰🇷'
-                elif '🇺🇸' in title:
-                    item['flag'] = '🇺🇸'
-                # 종목명 추출 (티커 앞까지)
-                name_part = re.sub(r'\([^)]+\)', '', title).replace('🇰🇷', '').replace('🇺🇸', '').strip()
+                if '🇰🇷' in title: item['flag'] = '🇰🇷'
+                elif '🇺🇸' in title: item['flag'] = '🇺🇸'
+                name_part = re.sub(r'\([^)]+\)', '', title)\
+                    .replace('🇰🇷', '').replace('🇺🇸', '').strip()
                 item['name'] = name_part
-                # 티커 추출
-                tk = parse_ticker_from_block(title)
-                item['ticker'] = tk or ''
+                item['ticker'] = parse_ticker_from_block(title) or ''
             elif line.startswith('**한 줄 요약:**'):
-                item['desc'] = line.replace('**한 줄 요약:**', '').strip()
+                item['desc']   = line.replace('**한 줄 요약:**', '').strip()
             elif line.startswith('**추천 이유:**'):
                 item['reason'] = line.replace('**추천 이유:**', '').strip()
             elif line.startswith('**리스크:**'):
-                item['risk'] = line.replace('**리스크:**', '').strip()
+                item['risk']   = line.replace('**리스크:**', '').strip()
             elif line.startswith('**난이도:**'):
-                item['stars'] = line.replace('**난이도:**', '').strip()
+                item['stars']  = line.replace('**난이도:**', '').strip()
         if item['name']:
             parsed.append(item)
 
     if not parsed:
-        st.markdown(ai_text)  # 파싱 실패 시 원문 표시
+        st.markdown(ai_text)
         return
-
     render_stock_cards(parsed)
 
 
 # ==========================================
-# 13. 사이드바 (공통)
+# 13. 사이드바
 # ==========================================
 with st.sidebar:
-    st.title("🤖 AI 주식 비서")
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, {IM_MINT}22, {IM_MINT}08);
+        border: 1px solid {IM_MINT}44;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        text-align: center;
+    ">
+        <div style="font-size:1.6rem;margin-bottom:0.3rem">🏦</div>
+        <div style="color:#E8F5F2;font-weight:700;font-size:1rem;letter-spacing:0.03em">
+            iM AI 애널리스트
+        </div>
+        <div style="color:#7AADA5;font-size:0.72rem;margin-top:0.2rem">
+            AI 기반 주식·환율 분석 서비스
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("---")
 
     page = st.radio(
-        "📂 메뉴",
-        options=["📊 주식 분석", "💱 환율", "⭐ 추천 종목"],
-        index=["📊 주식 분석", "💱 환율", "⭐ 추천 종목"].index(
+        "메뉴",
+        options=["주식 분석", "환율", "추천 종목"],
+        index=["주식 분석", "환율", "추천 종목"].index(
             st.session_state['page']
-            if st.session_state['page'] in ["📊 주식 분석", "💱 환율", "⭐ 추천 종목"]
-            else "📊 주식 분석"
-        )
+            if st.session_state['page'] in ["주식 분석", "환율", "추천 종목"]
+            else "주식 분석"
+        ),
+        format_func=lambda x: {
+            "주식 분석": "📊  주식 분석",
+            "환율":     "💱  환율",
+            "추천 종목": "⭐  추천 종목"
+        }[x]
     )
     st.session_state['page'] = page
     st.markdown("---")
 
-    if page == "📊 주식 분석":
-        st.header("🔍 종목 검색")
-        st.caption(
-            "**국내:** 한글 종목명 (삼성전자, 카카오)\n\n"
-            "**미국 티커:** 영대문자 (AAPL, TSLA)\n\n"
-            "**미국 회사명:** 영문 (Apple, Tesla)"
+    if page == "주식 분석":
+        st.markdown(
+            '<div style="color:#B0D4CC;font-size:0.78rem;font-weight:600;'
+            'letter-spacing:0.05em;margin-bottom:0.4rem">종목 검색</div>',
+            unsafe_allow_html=True
         )
-        query = st.text_input("종목명 또는 티커", placeholder="예: 삼성전자 / AAPL")
+        st.caption(
+            "국내: 한글 종목명 (삼성전자)\n\n"
+            "미국 티커: 영대문자 (AAPL)\n\n"
+            "미국 회사명: 영문 (Apple)"
+        )
+        query = st.text_input(
+            "종목명 또는 티커",
+            placeholder="예: 삼성전자 / AAPL",
+            label_visibility="collapsed"
+        )
 
-        if st.button("🔎 뉴스 분석 시작", use_container_width=True):
+        if st.button("분석 시작", use_container_width=True):
             if query:
                 market_guess, clean_query = detect_market(query)
                 ticker, real_name, market_type = None, None, 'KR'
 
                 if market_guess == 'US_TICKER':
-                    with st.spinner(f"🔍 {clean_query} 확인 중..."):
+                    with st.spinner(f"{clean_query} 확인 중..."):
                         ticker, real_name = validate_us_ticker(clean_query)
                     market_type = 'US'
                 elif market_guess == 'US_NAME':
-                    with st.spinner(f"🔍 '{clean_query}' 검색 중..."):
+                    with st.spinner(f"'{clean_query}' 검색 중..."):
                         ticker, real_name = get_us_ticker_by_name(clean_query)
                     market_type = 'US'
                 else:
-                    with st.spinner(f"🔍 '{clean_query}' 검색 중..."):
+                    with st.spinner(f"'{clean_query}' 검색 중..."):
                         ticker, real_name = get_ticker_from_db(clean_query)
                     market_type = 'KR'
 
@@ -516,20 +730,29 @@ with st.sidebar:
                         'last_query': None,
                     })
                     flag = "🇺🇸" if market_type == 'US' else "🇰🇷"
-                    st.success(f"{flag} **{real_name}** ({ticker})")
+                    st.success(f"{flag} {real_name} ({ticker})")
                 else:
                     st.error("종목을 찾을 수 없습니다.")
                     st.session_state['analyzed'] = False
             else:
                 st.warning("종목명을 입력해주세요.")
 
+    st.markdown(f"""
+    <div style="margin-top:2rem;font-size:0.7rem;color:#3D7068;text-align:center">
+        iM AI Analyst v3.2<br>
+        데이터: Yahoo Finance · DuckDuckGo
+    </div>
+    """, unsafe_allow_html=True)
+
 
 # ==========================================
 # 14. 페이지 1: 주식 분석
 # ==========================================
-if st.session_state['page'] == "📊 주식 분석":
-    st.title("📊 AI 주식 애널리스트 Pro")
-    st.markdown("국내·미국 주식 **뉴스 분석**과 **유튜브 영상 심층 분석**을 제공합니다.")
+if st.session_state['page'] == "주식 분석":
+    im_page_header(
+        "주식 분석",
+        "국내·미국 주식의 최신 뉴스 분석과 유튜브 영상 심층 분석을 제공합니다"
+    )
 
     if st.session_state['analyzed']:
         ticker      = st.session_state['current_ticker']
@@ -537,300 +760,42 @@ if st.session_state['page'] == "📊 주식 분석":
         market_type = st.session_state['market_type']
         flag_label  = "🇺🇸 미국" if market_type == 'US' else "🇰🇷 국내"
 
-        st.info(f"✅ **[{flag_label}]** **'{real_name}'** ({ticker}) 분석 결과입니다.")
+        # 종목 상태 배너
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(90deg, {IM_MINT}18, transparent);
+            border: 1px solid {IM_MINT}44;
+            border-left: 4px solid {IM_MINT};
+            border-radius: 8px;
+            padding: 0.65rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            color: {IM_DARK};
+        ">
+            <strong>{flag_label}</strong> &nbsp;|&nbsp;
+            <strong>{real_name}</strong> &nbsp;
+            <span style="font-family:monospace;background:{IM_BG};
+                border:1px solid {IM_BORDER};border-radius:4px;
+                padding:0.1rem 0.45rem;font-size:0.82rem;color:{IM_MINT}">{ticker}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         col_left, col_right = st.columns([1.2, 2])
 
-        # ── 왼쪽: 주가 차트 + 환율 차트 ──────────────────────
         with col_left:
-            # 주가 캔들 차트
-            st.subheader("📈 주가 차트 (6개월)")
+            im_section("주가 차트 (6개월)")
+            st.markdown(get_data_source_badge(), unsafe_allow_html=True)
             df = get_stock_data(ticker)
             if not df.empty:
                 fig_stock = go.Figure(data=[go.Candlestick(
                     x=df.index,
                     open=df['Open'], high=df['High'],
-                    low=df['Low'],   close=df['Close']
+                    low=df['Low'],   close=df['Close'],
+                    increasing_line_color=IM_UP,
+                    decreasing_line_color=IM_DOWN,
+                    increasing_fillcolor=IM_UP,
+                    decreasing_fillcolor=IM_DOWN,
                 )])
-                fig_stock.update_layout(xaxis_rangeslider_visible=False, height=340)
-                st.plotly_chart(fig_stock, use_container_width=True)
-
-                last_price = df['Close'].iloc[-1]
-                prev_price = df['Close'].iloc[-2]
-                delta = last_price - prev_price
-                if market_type == 'US':
-                    st.metric("현재가", f"${last_price:,.2f}", f"{delta:+.2f}")
-                else:
-                    st.metric("현재가", f"{last_price:,.0f}원", f"{delta:+,.0f}원")
-            else:
-                st.warning("차트 데이터 없음")
-
-        # ── 오른쪽: 뉴스 분석 + 유튜브 분석 ─────────────────
-        with col_right:
-            st.subheader("📰 AI 뉴스 분석 리포트")
-
-            if (
-                st.session_state.get('news_result_text') is None
-                or st.session_state.get('last_query') != real_name
-            ):
-                with st.spinner("최신 뉴스를 분석 중입니다..."):
-                    news_result, news_links = get_news_analysis(real_name, market_type)
-                    st.session_state['news_result_text'] = news_result
-                    st.session_state['news_links'] = news_links
-                    st.session_state['last_query'] = real_name
-
-            st.markdown(st.session_state['news_result_text'])
-
-            if st.session_state.get('news_links'):
-                with st.expander("📎 참고 기사 링크"):
-                    for n in st.session_state['news_links']:
-                        st.markdown(f"- [{n['title']}]({n['href']})")
-
-            st.markdown("---")
-
-            st.subheader("📺 유튜브 영상 심층 분석")
-            st.info("분석하고 싶은 영상의 링크를 입력하세요.")
-            youtube_url = st.text_input("유튜브 URL 붙여넣기", key="yt_url")
-
-            if st.button("🎬 이 영상 분석하기"):
-                if youtube_url:
-                    with st.status("🚀 영상 분석 중...", expanded=True) as status:
-                        status.write("1️⃣ 오디오 다운로드 중...")
-                        audio_file = download_audio(youtube_url)
-                        if audio_file:
-                            status.write("2️⃣ AI가 내용을 분석 중...")
-                            video_result = analyze_with_gemini("audio", audio_file, market_type)
-                            if "에러" not in video_result:
-                                status.update(label="✅ 분석 완료!", state="complete")
-                                st.markdown("### 🎬 영상 분석 결과")
-                                st.markdown(video_result)
-                            else:
-                                status.update(label="❌ 분석 실패", state="error")
-                                st.error(video_result)
-                            if os.path.exists(audio_file):
-                                os.remove(audio_file)
-                        else:
-                            status.update(label="❌ 다운로드 실패", state="error")
-                            st.error("영상을 다운로드할 수 없습니다. (링크 확인 필요)")
-                else:
-                    st.warning("링크를 입력해주세요.")
-
-    else:
-        st.markdown("---")
-        st.markdown(
-            """
-            ### 👈 왼쪽 사이드바에서 종목을 검색하세요!
-
-            | 입력 예시 | 설명 |
-            |---|---|
-            | `삼성전자` | 🇰🇷 국내 주식 한글 검색 |
-            | `AAPL` | 🇺🇸 미국 티커 직접 입력 |
-            | `Apple` | 🇺🇸 미국 회사명 검색 |
-
-            > 💡 **추천 종목**을 먼저 보고 싶다면 왼쪽 메뉴에서 **⭐ 추천 종목**을 클릭하세요!
-            """
-        )
-
-
-# ==========================================
-# 15. 페이지 2: 환율
-# ==========================================
-elif st.session_state['page'] == "💱 환율":
-    st.title("💱 환율 대시보드")
-    st.markdown("달러·엔화 환율의 흐름을 한눈에 확인하세요.")
-
-    # 기간 선택
-    period_label_map = {"1개월": "1mo", "3개월": "3mo", "6개월": "6mo", "1년": "1y"}
-    period_choice = st.radio(
-        "📅 조회 기간",
-        options=list(period_label_map.keys()),
-        index=list(period_label_map.keys()).index("3개월"),
-        horizontal=True
-    )
-    selected_period = period_label_map[period_choice]
-
-    st.markdown("---")
-
-    tab_usd, tab_jpy = st.tabs(["🇺🇸 달러 (USD/KRW)", "🇯🇵 엔화 (JPY/KRW)"])
-
-    # ── USD/KRW 탭 ────────────────────────────────────────
-    with tab_usd:
-        fig_usd, usd_info = get_fx_chart("USDKRW=X", "USD/KRW", "#f0a500",
-                                         period=selected_period, height=380)
-        if fig_usd and usd_info:
-            rate, chg, chg_pct = usd_info
-
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                st.metric("💵 현재 달러 환율", f"{rate:,.2f} 원",
-                          f"{chg:+.2f}원 ({chg_pct:+.2f}%)")
-            with m2:
-                # 기간 내 최고가
-                df_usd = yf.Ticker("USDKRW=X").history(period=selected_period)
-                st.metric(f"📈 {period_choice} 최고", f"{df_usd['High'].max():,.2f} 원")
-            with m3:
-                st.metric(f"📉 {period_choice} 최저", f"{df_usd['Low'].min():,.2f} 원")
-
-            st.plotly_chart(fig_usd, use_container_width=True, config={'displayModeBar': False})
-            st.caption("출처: Yahoo Finance (USDKRW=X) · 장중 실시간 데이터가 아닐 수 있습니다.")
-
-            # 해석 가이드
-            with st.expander("💡 환율 해석 가이드"):
-                st.markdown(
-                    """
-                    - **환율 상승(원화 약세):** 수출 기업(삼성전자·현대차 등) 수혜 / 수입 물가·유가 상승 압력
-                    - **환율 하락(원화 강세):** 수입 소비재·해외여행 비용 절감 / 수출 기업 실적 압박
-                    - **1,300원 돌파:** 외환시장 긴장 신호, 외국인 자금 유출 우려
-                    - **1,200원 이하:** 원화 강세 국면, 외국인 순매수 유입 기대
-                    """
-                )
-        else:
-            st.warning("USD/KRW 데이터를 불러올 수 없습니다.")
-
-    # ── JPY/KRW 탭 ────────────────────────────────────────
-    with tab_jpy:
-        fig_jpy, jpy_info = get_fx_chart("JPYKRW=X", "JPY/KRW", "#e74c3c",
-                                         period=selected_period, height=380)
-        if fig_jpy and jpy_info:
-            rate, chg, chg_pct = jpy_info
-            rate100    = rate * 100
-            chg100     = chg * 100
-
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                st.metric("¥ 현재 엔화 환율 (100엔)", f"{rate100:,.2f} 원",
-                          f"{chg100:+.2f}원 ({chg_pct:+.2f}%)")
-            with m2:
-                df_jpy = yf.Ticker("JPYKRW=X").history(period=selected_period)
-                st.metric(f"📈 {period_choice} 최고 (100엔)", f"{df_jpy['High'].max()*100:,.2f} 원")
-            with m3:
-                st.metric(f"📉 {period_choice} 최저 (100엔)", f"{df_jpy['Low'].min()*100:,.2f} 원")
-
-            st.plotly_chart(fig_jpy, use_container_width=True, config={'displayModeBar': False})
-            st.caption("출처: Yahoo Finance (JPYKRW=X) · 100엔 기준 표시 · 장중 실시간이 아닐 수 있습니다.")
-
-            with st.expander("💡 엔화 환율 해석 가이드"):
-                st.markdown(
-                    """
-                    - **엔화 약세 (저환율):** 일본 여행 비용 절감 / 일본산 수입품 가격 하락
-                    - **엔화 강세 (고환율):** 일본 수출 기업 수혜 / 한국 대일 수출 경쟁력 약화
-                    - **800원대:** 사상적 엔저 수준, 일본은행 개입 가능성
-                    - **900원 이상:** 엔화 정상화 국면, 일·한 금리차 축소 신호
-                    """
-                )
-        else:
-            st.warning("JPY/KRW 데이터를 불러올 수 없습니다.")
-
-
-# ==========================================
-# 16. 페이지 3: 추천 종목  ★ 신규: 카드 + 미니 차트
-# ==========================================
-elif st.session_state['page'] == "⭐ 추천 종목":
-    st.title("⭐ AI 추천 종목")
-
-    st.markdown("**기본 추천 목록** + 버튼 클릭 시 **AI 실시간 추천**을 함께 제공합니다.")
-
-    tab_beginner, tab_expert = st.tabs(["🌱 초보자 추천", "🔥 고수 추천"])
-
-    # ── 초보자 기본 목록 ───────────────────────────────────
-    default_beginner = [
-        {"flag": "🇰🇷", "name": "삼성전자",   "ticker": "005930.KS",
-         "desc": "반도체·가전 글로벌 1위, 배당 안정적",
-         "reason": "시가총액 1위 방어주, 초보자 장기투자 최적",
-         "risk": "반도체 업황 사이클에 따른 주가 변동",   "stars": "⭐"},
-        {"flag": "🇰🇷", "name": "KODEX 200",  "ticker": "069500.KS",
-         "desc": "코스피200 추종 ETF, 분산투자 효과",
-         "reason": "단일 종목 리스크 없이 시장 전체에 투자 가능",
-         "risk": "코스피 지수 하락 시 동반 하락",          "stars": "⭐"},
-        {"flag": "🇰🇷", "name": "한국전력",   "ticker": "015760.KS",
-         "desc": "공기업 안정성, 배당 수익 기대",
-         "reason": "경기 불황에도 실적 방어력 높은 유틸리티주",
-         "risk": "전기요금 정책 변화에 따른 실적 영향",    "stars": "⭐"},
-        {"flag": "🇺🇸", "name": "Apple",      "ticker": "AAPL",
-         "desc": "세계 최대 시가총액, 안정적 성장",
-         "reason": "강력한 생태계·브랜드 충성도, 배당·자사주 매입",
-         "risk": "중국 시장 의존도 및 규제 리스크",        "stars": "⭐"},
-        {"flag": "🇺🇸", "name": "S&P 500 ETF","ticker": "SPY",
-         "desc": "미국 500대 기업 분산투자 ETF",
-         "reason": "미국 주식 시장 전체에 한 번에 투자 가능",
-         "risk": "미국 경기침체 시 지수 전반 하락",        "stars": "⭐"},
-        {"flag": "🇺🇸", "name": "Coca-Cola",  "ticker": "KO",
-         "desc": "60년 연속 배당 증가, 경기 방어주",
-         "reason": "소비재 필수품, 불황에도 안정적 수익 유지",
-         "risk": "저성장 업종, 고금리 시 상대적 매력 감소", "stars": "⭐"},
-    ]
-
-    # ── 고수 기본 목록 ─────────────────────────────────────
-    default_expert = [
-        {"flag": "🇰🇷", "name": "SK하이닉스",   "ticker": "000660.KS",
-         "desc": "HBM 메모리 AI 최대 수혜주",
-         "reason": "엔비디아 HBM 공급 1위, AI 인프라 폭증 직접 수혜",
-         "risk": "메모리 가격 변동·DRAM 업황 사이클",     "stars": "⭐⭐⭐⭐"},
-        {"flag": "🇰🇷", "name": "에코프로비엠", "ticker": "247540.KQ",
-         "desc": "2차전지 양극재, 전기차 성장 직접 수혜",
-         "reason": "글로벌 전기차 확대 수혜, 삼성SDI·SK온 납품",
-         "risk": "전기차 수요 둔화 및 원재료 가격 변동",   "stars": "⭐⭐⭐⭐⭐"},
-        {"flag": "🇰🇷", "name": "셀트리온",     "ticker": "068270.KS",
-         "desc": "바이오시밀러 글로벌 확장 중",
-         "reason": "미국·유럽 바이오시밀러 시장 점유율 확대",
-         "risk": "임상 실패·경쟁사 진입 리스크",           "stars": "⭐⭐⭐"},
-        {"flag": "🇺🇸", "name": "NVIDIA",       "ticker": "NVDA",
-         "desc": "AI 인프라 핵심 GPU 독점적 지위",
-         "reason": "데이터센터 AI 가속기 시장 80%+ 점유",
-         "risk": "밸류에이션 고평가·AMD 경쟁 심화",        "stars": "⭐⭐⭐⭐"},
-        {"flag": "🇺🇸", "name": "Meta Platforms","ticker": "META",
-         "desc": "AI 광고·메타버스 실적 고성장",
-         "reason": "AI 기반 광고 타겟팅 효율 극대화, EPS 성장세",
-         "risk": "개인정보 규제·메타버스 투자 장기화",     "stars": "⭐⭐⭐⭐"},
-        {"flag": "🇺🇸", "name": "Palantir",     "ticker": "PLTR",
-         "desc": "정부·기업 AI 분석 플랫폼 고성장",
-         "reason": "미 국방부·NATO 등 정부 계약 급증, AIP 플랫폼 확장",
-         "risk": "높은 밸류에이션, 정부 예산 축소 리스크", "stars": "⭐⭐⭐⭐⭐"},
-    ]
-
-    # ── 탭 1: 초보자 ──────────────────────────────────────
-    with tab_beginner:
-        st.markdown("#### 🌱 처음 투자를 시작하는 분들을 위한 안정적인 종목")
-        st.caption("✅ 변동성 낮음 · 배당 안정 · 장기 보유 적합 · 글로벌 브랜드")
-        st.markdown("---")
-        st.markdown("##### 📋 기본 추천 리스트")
-
-        render_stock_cards(default_beginner)
-
-        st.markdown("---")
-        st.markdown("##### 🤖 AI 실시간 추천 (현재 트렌드 기반)")
-        st.caption("버튼을 클릭하면 AI가 오늘의 시장 상황을 반영해 종목을 추천합니다.")
-
-        if st.button("✨ AI에게 초보자 추천 종목 받기", use_container_width=True, key="ai_begin"):
-            with st.spinner("AI가 시장을 분석 중입니다..."):
-                st.session_state['rec_beginner'] = analyze_with_gemini("recommend", "beginner")
-
-        if st.session_state.get('rec_beginner'):
-            render_ai_recommendation_cards(st.session_state['rec_beginner'])
-
-    # ── 탭 2: 고수 ────────────────────────────────────────
-    with tab_expert:
-        st.markdown("#### 🔥 경험 많은 투자자를 위한 성장·모멘텀 종목")
-        st.caption("📈 성장 모멘텀 · 기관 매수세 · AI·반도체·바이오 핵심 테마")
-        st.markdown("---")
-        st.markdown("##### 📋 기본 추천 리스트")
-
-        render_stock_cards(default_expert)
-
-        st.markdown("---")
-        st.markdown("##### 🤖 AI 실시간 추천 (현재 트렌드 기반)")
-        st.caption("버튼을 클릭하면 AI가 오늘의 시장 상황을 반영해 종목을 추천합니다.")
-
-        if st.button("✨ AI에게 고수 추천 종목 받기", use_container_width=True, key="ai_expert"):
-            with st.spinner("AI가 시장을 분석 중입니다..."):
-                st.session_state['rec_expert'] = analyze_with_gemini("recommend", "expert")
-
-        if st.session_state.get('rec_expert'):
-            render_ai_recommendation_cards(st.session_state['rec_expert'])
-
-    # 면책 고지
-    st.markdown("---")
-    st.caption(
-        "⚠️ **투자 유의사항:** 본 추천 종목은 AI가 공개 정보를 기반으로 생성한 참고 자료이며, "
-        "투자 권유가 아닙니다. 모든 투자 결정과 그에 따른 손익은 투자자 본인에게 귀속됩니다."
-    )
+                fig_stock.update_layout(
+                    xaxis_rangeslider_visible=False,
+                    height
