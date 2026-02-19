@@ -1,0 +1,9 @@
+streamlit
+pandas
+yfinance
+plotly
+yt-dlp
+google-generativeai
+duckduckgo-search
+FinanceDataReader
+google-api-python-client
