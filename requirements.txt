@@ -1,7 +1,7 @@
 streamlit
 pandas
-numpy
-FinanceDataReader
+numpy<2.0
+finance-datareader
 yt-dlp
 google-generativeai
 yfinance
@@ -9,3 +9,4 @@ plotly
 duckduckgo-search
 lxml
 requests
+beautifulsoup4
