@@ -1,9 +1,11 @@
 streamlit
 pandas
-yfinance
-plotly
+numpy
+FinanceDataReader
 yt-dlp
 google-generativeai
+yfinance
+plotly
 duckduckgo-search
-FinanceDataReader
-google-api-python-client
+lxml
+requests

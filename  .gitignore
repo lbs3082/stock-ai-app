@@ -1,0 +1,6 @@
+__pycache__/
+.streamlit/
+stocks.db
+*.pyc
+.env
+.venv
