@@ -1,4 +1,4 @@
-# version 6.1 - AI Investment Simulator (Enhanced News & Navigation)
+# version 7.0 - AI Multi-Stock Portfolio Simulator
 
 import streamlit as st
 import os
@@ -11,225 +11,254 @@ import FinanceDataReader as fdr
 from duckduckgo_search import DDGS
 
 # ==========================================
-# 1. 초기 설정 및 세션 상태 관리
+# 1. 초기 설정 및 세션 상태 (포트폴리오 구조)
 # ==========================================
-st.set_page_config(page_title="AI 시뮬레이션 투자 Pro", page_icon="📈", layout="wide")
+st.set_page_config(page_title="AI 멀티 포트폴리오 시뮬레이터", page_icon="💼", layout="wide")
 
 # API 설정
-try:
+try: 
     API_KEY = st.secrets["GEMINI_API_KEY"]
-except:
+except: 
     API_KEY = os.getenv("GEMINI_API_KEY", "")
 genai.configure(api_key=API_KEY)
 
 # 세션 상태 초기화
-if 'sim_active' not in st.session_state:
+if 'cash' not in st.session_state:
     st.session_state.update({
-        'sim_active': False,
-        'balance': 1000000,
-        'shares': 0,
-        'avg_price': 0,
+        'cash': 1000000,
+        'portfolio': {},      # {ticker: {'shares': 0, 'avg_price': 0}}
         'current_date': None,
-        'ticker': "",
-        'history': [],
-        'log': []
+        'selected_ticker': "005930.KS",
+        'start_year': 2020
     })
 
 # 스타일
 st.markdown("""
 <style>
-    .stMetric { background: #FFFFFF; padding: 20px; border-radius: 15px; border: 1px solid #E0E0E0; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .news-card { background: #F8F9FA; padding: 15px; border-left: 5px solid #00B496; border-radius: 5px; margin-bottom: 10px; }
-    .info-box { background: #E3F2FD; padding: 15px; border-radius: 10px; border: 1px solid #BBDEFB; }
+    .stMetric { background: #FFFFFF; padding: 15px; border-radius: 10px; border: 1px solid #EEE; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .portfolio-card { background: #F0F4F8; padding: 15px; border-radius: 10px; border-left: 5px solid #00B496; margin-bottom: 10px; }
+    .news-box { background: #F9F9F9; padding: 15px; border-radius: 10px; border: 1px solid #E0E0E0; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 핵심 로직 함수
+# 2. 유틸리티 함수
 # ==========================================
 
-@st.cache_data(ttl=3600)
-def get_historical_data(ticker, start_year):
-    """데이터 로드 및 유효성 검사"""
+@st.cache_data
+def get_company_name(ticker):
+    """티커를 회사명으로 변환 (뉴스 검색용)"""
     try:
-        start_date = f"{start_year}-01-01"
-        end_date = "2025-12-31"
-        df = yf.download(ticker, start=start_date, end=end_date)
+        df_krx = fdr.StockListing('KRX')
+        clean_ticker = ticker.replace('.KS', '').replace('.KQ', '')
+        match = df_krx[df_krx['Code'] == clean_ticker]
+        if not match.empty:
+            return match.iloc[0]['Name']
+        return ticker
+    except:
+        return ticker
+
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker, start_year):
+    """주가 데이터 로드"""
+    try:
+        df = yf.download(ticker, start=f"{start_year}-01-01", end="2025-12-31")
         if df.empty: return None
-        # 데이터가 MultiIndex인 경우 처리 (yfinance 최신 버전 대응)
-        if isinstance(df.columns, pd.MultiIndex):
+        if isinstance(df.columns, pd.MultiIndex): 
             df.columns = df.columns.get_level_values(0)
         return df
-    except Exception as e:
-        st.error(f"데이터 로드 오류: {e}")
+    except: 
         return None
 
-def fetch_real_news(ticker, date):
-    """DuckDuckGo를 통해 당시의 실제 뉴스 검색 시도"""
-    query = f"{ticker} {date.year}년 {date.month}월 뉴스"
+def get_ai_news_analysis(ticker, date):
+    """실제 뉴스 검색 및 AI 요약"""
+    company_name = get_company_name(ticker)
+    query = f"{company_name} {date.year}년 {date.month}월 주요 뉴스"
+    
+    real_news_snippet = ""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=3))
             if results:
-                news_text = "\n".join([f"- {r['title']}" for r in results])
-                return news_text
-            return "검색된 실제 뉴스 데이터가 부족합니다."
-    except:
-        return "뉴스 검색 서비스를 일시적으로 사용할 수 없습니다."
+                real_news_snippet = "\n".join([r['title'] for r in results])
+            else:
+                real_news_snippet = "검색된 뉴스 제목이 없습니다."
+    except: 
+        real_news_snippet = "뉴스 검색 서비스를 이용할 수 없습니다."
 
-def get_ai_news_summary(ticker, current_date):
-    """검색된 뉴스 + AI 지식을 결합한 당시 상황 요약"""
     model = genai.GenerativeModel('gemini-1.5-flash')
-    real_news = fetch_real_news(ticker, current_date)
-    date_str = current_date.strftime("%Y년 %m월")
-    
     prompt = f"""
-    당신은 금융 분석가입니다. {date_str} 당시 {ticker} 종목의 상황을 분석해주세요.
-    참고할 실제 뉴스 키워드: {real_news}
+    당신은 전문 경제 분석가입니다. {date.strftime('%Y년 %m월')} 당시 {company_name}({ticker})의 시장 상황을 분석해주세요.
+    검색된 뉴스 키워드: {real_news_snippet}
     
-    위 정보와 당신의 지식을 바탕으로 당시 투자자들이 주목했던 이슈 3가지를 
-    '[제목] 내용' 형식으로 한국어로 아주 짧고 명확하게 작성해주세요.
+    위 정보와 당신의 지식을 결합해 당시 투자자가 반드시 알아야 했던 핵심 뉴스 3가지를 
+    제목과 요약 내용으로 구성해 한국어로 작성해줘. 
+    당시의 실제 경제 상황(코로나, 금리, 기업 이슈 등)을 반영해야 해.
     """
     try:
         response = model.generate_content(prompt)
         return response.text
-    except:
-        return "AI 분석을 불러올 수 없습니다."
-
-@st.cache_data
-def get_stock_key_points(ticker):
-    """종목 핵심 정보 3가지 요약"""
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    prompt = f"{ticker} 종목에 대해 투자자가 반드시 알아야 할 핵심 정보(비즈니스 모델, 시장 지위, 리스크 등) 3가지를 요약해줘."
-    try:
-        return model.generate_content(prompt).text
-    except:
-        return "정보를 가져올 수 없습니다."
+    except: 
+        return "AI 분석을 가져오는 데 실패했습니다."
 
 # ==========================================
-# 3. 메인 UI 및 컨트롤
+# 3. 메인 UI
 # ==========================================
 
-st.sidebar.title("🔍 시뮬레이션 제어")
-
-# [수정 1] 언제든 종목을 변경할 수 있도록 입력창 상시 노출
+# 사이드바: 설정 및 포트폴리오 현황
 with st.sidebar:
-    new_ticker = st.text_input("종목 변경/검색", value=st.session_state.ticker if st.session_state.ticker else "005930.KS")
-    new_year = st.selectbox("시작 연도", [2019, 2020, 2021, 2022, 2023, 2024], index=1)
+    st.title("💼 My Portfolio")
     
-    if st.button("🚀 새로운 시뮬레이션 시작"):
-        df_check = get_historical_data(new_ticker, new_year)
-        if df_check is not None:
-            st.session_state.update({
-                'sim_active': True,
-                'ticker': new_ticker,
-                'current_date': df_check.index[0],
-                'balance': 1000000,
-                'shares': 0,
-                'avg_price': 0,
-                'history': []
-            })
+    if st.session_state.current_date is None:
+        st.subheader("시뮬레이션 시작 설정")
+        start_year = st.selectbox("시작 연도", [2019, 2020, 2021, 2022, 2023, 2024], index=1)
+        if st.button("🚀 시뮬레이션 시작"):
+            st.session_state.start_year = start_year
+            st.session_state.current_date = datetime(start_year, 1, 2)
             st.rerun()
-        else:
-            st.error("유효하지 않은 종목 코드이거나 데이터가 없습니다.")
+    else:
+        st.metric("현금 잔고", f"{int(st.session_state.cash):,}원")
+        st.write("---")
+        st.subheader("📦 보유 종목 현황")
+        
+        has_holdings = False
+        for t, info in st.session_state.portfolio.items():
+            if info['shares'] > 0:
+                has_holdings = True
+                with st.container():
+                    st.markdown(f"""
+                    <div class="portfolio-card">
+                        <b>{t}</b><br>
+                        {info['shares']}주 보유<br>
+                        평단: {int(info['avg_price']):,}원
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        if not has_holdings:
+            st.write("현재 보유 중인 종목이 없습니다.")
 
-    if st.session_state.sim_active:
-        st.divider()
-        if st.button("❌ 시뮬레이션 초기화"):
-            st.session_state.sim_active = False
+        st.write("---")
+        if st.button("⏪ 전체 리셋"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
-# 게임 본문
-if st.session_state.sim_active:
-    df = get_historical_data(st.session_state.ticker, 2019)
-    current_idx = df.index.get_loc(st.session_state.current_date)
-    current_price = float(df.iloc[current_idx]['Close'])
+# 메인 화면
+if st.session_state.current_date:
+    st.title(f"🚀 AI 자산 관리 시뮬레이터")
+    st.subheader(f"📅 현재 시점: {st.session_state.current_date.strftime('%Y-%m-%d')}")
     
-    st.title(f"💹 {st.session_state.ticker} 투자 시뮬레이션")
+    # 1. 종목 검색 및 선택
+    search_col1, search_col2 = st.columns([3, 1])
+    with search_col1:
+        ticker_input = st.text_input("분석 및 거래할 종목 입력 (예: 삼성전자 티커 005930.KS, NVDA, TSLA)", value=st.session_state.selected_ticker)
+    with search_col2:
+        if st.button("🔍 종목 조회"):
+            st.session_state.selected_ticker = ticker_input
+            st.rerun()
+
+    # 데이터 로드
+    df = get_stock_data(st.session_state.selected_ticker, st.session_state.start_year)
     
-    # 상단 대시보드
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("현재 날짜", st.session_state.current_date.strftime("%Y-%m-%d"))
-    m2.metric("예수금", f"{int(st.session_state.balance):,}원")
-    m3.metric("보유 주식", f"{st.session_state.shares}주")
-    
-    total_asset = st.session_state.balance + (st.session_state.shares * current_price)
-    profit_rate = ((total_asset - 1000000) / 1000000) * 100
-    m4.metric("총 자산 (수익률)", f"{int(total_asset):,}원", f"{profit_rate:.2f}%")
-
-    col_left, col_right = st.columns([2, 1])
-
-    with col_left:
-        # 차트
-        hist_view = df.iloc[max(0, current_idx-40):current_idx+1]
-        fig = go.Figure(data=[go.Candlestick(x=hist_view.index,
-                        open=hist_view['Open'], high=hist_view['High'],
-                        low=hist_view['Low'], close=hist_view['Close'])])
-        fig.update_layout(title=f"주가 흐름 (현재가: {current_price:,.0f}원)", xaxis_rangeslider_visible=False, height=500)
-        st.plotly_chart(fig, use_container_width=True)
-
-        # 액션 버튼
-        st.subheader("📝 투자 명령")
-        act1, act2, act3, act4 = st.columns(4)
-        
-        if act1.button("💰 매수 (All-In)"):
-            if st.session_state.balance >= current_price:
-                new_shares = int(st.session_state.balance // current_price)
-                st.session_state.avg_price = ((st.session_state.avg_price * st.session_state.shares) + (new_shares * current_price)) / (st.session_state.shares + new_shares)
-                st.session_state.shares += new_shares
-                st.session_state.balance -= (new_shares * current_price)
-                st.success(f"{new_shares}주 매수 완료!")
-        
-        if act2.button("💧 물타기 (50%)"):
-            if st.session_state.balance >= current_price:
-                buy_amount = st.session_state.balance * 0.5
-                new_shares = int(buy_amount // current_price)
-                st.session_state.avg_price = ((st.session_state.avg_price * st.session_state.shares) + (new_shares * current_price)) / (st.session_state.shares + new_shares)
-                st.session_state.shares += new_shares
-                st.session_state.balance -= (new_shares * current_price)
-                st.info(f"평단가 조절: {st.session_state.avg_price:,.0f}원")
-
-        if act3.button("🚪 전량 매도"):
-            if st.session_state.shares > 0:
-                st.session_state.balance += (st.session_state.shares * current_price)
-                st.session_state.shares = 0
-                st.session_state.avg_price = 0
-                st.warning("전량 매도 완료!")
-
-        if act4.button("⏩ 다음 달 이동"):
-            if current_idx + 20 < len(df):
-                st.session_state.current_date = df.index[current_idx + 20]
-                st.rerun()
+    if df is not None and not df.empty:
+        # 현재 날짜의 가격 정보 가져오기
+        try:
+            available_dates = df.index[df.index <= st.session_state.current_date]
+            if len(available_dates) == 0:
+                st.warning("선택한 시점에 데이터가 없습니다. 시간을 더 진행시켜 보세요.")
+                current_price = 0
             else:
-                st.error("시뮬레이션 종료 시점입니다.")
+                current_date_actual = available_dates[-1]
+                current_price = float(df.loc[current_date_actual]['Close'])
+        except: 
+            current_price = 0
 
-    with col_right:
-        # [수정 2] 뉴스 및 기사 섹션 강화
-        st.subheader("📰 당시 주요 기사 요약")
-        with st.container(border=True):
-            with st.spinner("당시 뉴스를 수집 중..."):
-                news = get_ai_news_summary(st.session_state.ticker, st.session_state.current_date)
-                st.markdown(news)
+        # UI 레이아웃
+        col_main, col_info = st.columns([2, 1])
 
-        # [수정 3] 종목 핵심 요약 3가지
-        st.subheader("💡 종목 투자 포인트")
-        with st.container():
-            points = get_stock_key_points(st.session_state.ticker)
-            st.info(points)
-        
-        if st.session_state.shares > 0:
+        with col_main:
+            # 차트
+            hist_view = df.loc[:st.session_state.current_date].tail(50)
+            fig = go.Figure(data=[go.Candlestick(
+                x=hist_view.index, 
+                open=hist_view['Open'], 
+                high=hist_view['High'], 
+                low=hist_view['Low'], 
+                close=hist_view['Close'],
+                name='Price'
+            )])
+            fig.update_layout(
+                title=f"{st.session_state.selected_ticker} 주가 흐름 (현재가: {current_price:,.0f}원)", 
+                xaxis_rangeslider_visible=False,
+                height=500,
+                template="plotly_white"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # 거래 섹션
+            st.subheader("💳 주식 거래")
+            t_col1, t_col2, t_col3 = st.columns([1, 1, 1])
+            amount = t_col1.number_input("거래 수량(주)", min_value=1, value=1, step=1)
+            
+            if t_col2.button("🛒 매수하기", use_container_width=True):
+                if current_price > 0:
+                    cost = amount * current_price
+                    if st.session_state.cash >= cost:
+                        p = st.session_state.portfolio.get(st.session_state.selected_ticker, {'shares': 0, 'avg_price': 0})
+                        new_shares = p['shares'] + amount
+                        new_avg = ((p['avg_price'] * p['shares']) + cost) / new_shares
+                        st.session_state.portfolio[st.session_state.selected_ticker] = {'shares': new_shares, 'avg_price': new_avg}
+                        st.session_state.cash -= cost
+                        st.success(f"{st.session_state.selected_ticker} {amount}주 매수 성공!")
+                        st.rerun()
+                    else: 
+                        st.error("현금 잔고가 부족합니다.")
+                else:
+                    st.error("유효한 가격 데이터가 없습니다.")
+
+            if t_col3.button("💰 매도하기", use_container_width=True):
+                p = st.session_state.portfolio.get(st.session_state.selected_ticker, {'shares': 0, 'avg_price': 0})
+                if p['shares'] >= amount:
+                    st.session_state.cash += (amount * current_price)
+                    p['shares'] -= amount
+                    st.session_state.portfolio[st.session_state.selected_ticker] = p
+                    st.warning(f"{st.session_state.selected_ticker} {amount}주 매도 성공!")
+                    st.rerun()
+                else: 
+                    st.error("보유 수량이 부족합니다.")
+
+        with col_info:
+            # 뉴스 분석
+            st.subheader("📰 당시 주요 뉴스 (AI)")
+            if current_price > 0:
+                with st.container():
+                    with st.spinner("당시 시장 상황 분석 중..."):
+                        analysis = get_ai_news_analysis(st.session_state.selected_ticker, st.session_state.current_date)
+                        st.markdown(f'<div class="news-box">{analysis}</div>', unsafe_allow_html=True)
+            
             st.divider()
-            st.write(f"**보유 평단:** {st.session_state.avg_price:,.0f}원")
-            diff = ((current_price - st.session_state.avg_price) / st.session_state.avg_price) * 100
-            color = "red" if diff > 0 else "blue"
-            st.write(f"**수익률:** :{color}[{diff:.2f}%]")
+            st.subheader("⌛ 시간 관리")
+            if st.button("⏩ 한 달 뒤로 이동 (30일)", use_container_width=True):
+                st.session_state.current_date += timedelta(days=30)
+                st.rerun()
+            
+            # 자산 총계 요약
+            st.write("---")
+            total_stock_value = 0
+            for t, info in st.session_state.portfolio.items():
+                # 간단한 평가를 위해 현재 조회 중인 종목만 실시간 가격 반영 (다른 종목은 평단 기준 혹은 추가 조회 필요)
+                # 여기서는 구현 단순화를 위해 보유 종목 리스트만 사이드바에 표시
+                pass
 
+    else:
+        st.error(f"'{st.session_state.selected_ticker}' 데이터를 불러올 수 없습니다. 티커 형식을 확인해 주세요. (예: 삼성전자 005930.KS, 애플 AAPL)")
 else:
-    st.info("왼쪽 사이드바에서 종목(티커)과 시작 연도를 선택하고 '새로운 시뮬레이션 시작'을 눌러주세요.")
-    st.write("---")
+    st.info("왼쪽 사이드바에서 시뮬레이션 시작 연도를 선택하고 '시뮬레이션 시작'을 눌러주세요.")
     st.markdown("""
-    ### 시뮬레이션 가이드
-    1. **종목 입력**: 삼성전자(005930.KS), 애플(AAPL), 테슬라(TSLA) 등 티커를 입력하세요.
-    2. **뉴스 분석**: 매달 이동할 때마다 당시의 **실제 뉴스**를 기반으로 한 AI 요약이 제공됩니다.
-    3. **전략 실습**: 하락장에서 '물타기'를 하거나, 뉴스에 따라 '전량 매도'하는 등 자신만의 전략을 테스트해보세요.
+    ### 💡 사용 방법
+    1. **시작 연도 선택**: 2019~2024년 중 원하는 시점을 선택합니다.
+    2. **종목 조회**: 중앙 상단에 종목 티커를 입력하고 조회를 누릅니다.
+    3. **뉴스 확인**: 당시의 실제 뉴스를 AI가 요약해줍니다. 이를 바탕으로 투자를 결정하세요.
+    4. **거래**: 원하는 수량만큼 매수/매도하여 포트폴리오를 구성합니다.
+    5. **시간 여행**: '한 달 뒤로 이동'을 눌러 나의 투자 결과를 확인하고 다음 결정을 내립니다.
     """)
