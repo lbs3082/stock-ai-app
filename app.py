@@ -117,7 +117,7 @@ def analyze_with_gemini(content_type: str, content_data, market_type: str = 'KR'
     if not API_KEY:
         return "❌ API 키가 설정되지 않아 분석을 수행할 수 없습니다."
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         if content_type == "text":
             prompt = f"주식 분석 리포트를 작성해줘. [데이터]\n{content_data}\n양식: 요약, 의견, 리스크/호재."
             return model.generate_content(prompt).text
